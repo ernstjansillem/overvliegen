@@ -1,6 +1,199 @@
-cd "C:\Users\ernst\Downloads\vliegtuigradar"
-git init
-git remote add origin https://github.com/jouwgebruikersnaam/vliegtuigradar.git
-git add .
-git commit -m "Initieel project"
-git push -u origin master
+# Create directory structure
+project_root = Path("/mnt/data/vliegtuigradar")
+src_dir = project_root / "src"
+project_root.mkdir(parents=True, exist_ok=True)
+src_dir.mkdir(parents=True, exist_ok=True)
+
+# File contents
+files = {
+    project_root / "index.html": """<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vliegtuigradar</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>""",
+
+    project_root / "package.json": """{
+  "name": "vliegtuigradar",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.0",
+    "autoprefixer": "^10.4.14",
+    "postcss": "^8.4.21",
+    "tailwindcss": "^3.3.2",
+    "typescript": "^5.0.2",
+    "vite": "^4.3.9"
+  }
+}""",
+
+    project_root / "tsconfig.json": """{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": false,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx"
+  },
+  "include": ["src"]
+}""",
+
+    project_root / "vite.config.ts": """import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+})
+""",
+
+    project_root / "postcss.config.js": """export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}""",
+
+    project_root / "tailwind.config.js": """/** @type {import('tailwindcss').Config} */
+export default {
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+""",
+
+    src_dir / "main.tsx": """import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App.tsx";
+import "./index.css";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+""",
+
+    src_dir / "index.css": """@tailwind base;
+@tailwind components;
+@tailwind utilities;
+""",
+
+    src_dir / "App.tsx": """import { useEffect, useState } from "react";
+
+const MY_LAT = 52.185242;
+const MY_LON = 4.476314;
+const LAT_RANGE = [MY_LAT - 0.1, MY_LAT + 0.1];
+const LON_RANGE = [MY_LON - 0.1, MY_LON + 0.1];
+
+interface Plane {
+  icao24: string;
+  callsign: string;
+  lat: number;
+  lon: number;
+  altitude: number;
+  distanceKm: number;
+}
+
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function App() {
+  const [planes, setPlanes] = useState<Plane[]>([]);
+
+  const fetchPlanes = async () => {
+    try {
+      const res = await fetch("https://opensky-network.org/api/states/all");
+      const data = await res.json();
+
+      const filtered = (data.states || []).map((p: any) => {
+        const lat = p[6];
+        const lon = p[5];
+        if (!lat || !lon) return null;
+
+        const inArea =
+          lat >= LAT_RANGE[0] && lat <= LAT_RANGE[1] &&
+          lon >= LON_RANGE[0] && lon <= LON_RANGE[1];
+
+        if (inArea) {
+          const distance = haversineDistance(MY_LAT, MY_LON, lat, lon);
+          return {
+            icao24: p[0],
+            callsign: p[1]?.trim() || "Onbekend",
+            lat,
+            lon,
+            altitude: p[7],
+            distanceKm: parseFloat(distance.toFixed(1)),
+          };
+        }
+        return null;
+      }).filter(Boolean);
+
+      setPlanes(filtered as Plane[]);
+    } catch (err) {
+      console.error("Fout bij ophalen vliegtuigdata:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchPlanes();
+    const interval = setInterval(fetchPlanes, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="p-6 max-w-xl mx-auto space-y-4">
+      <h1 className="text-2xl font-bold">✈️ Vliegtuigen boven je huis</h1>
+      {planes.length === 0 ? (
+        <p className="text-gray-500">Geen vliegtuigen op dit moment.</p>
+      ) : (
+        planes.map((plane) => (
+          <div key={plane.icao24} className="border rounded-xl p-4 shadow">
+            <p><strong>Callsign:</strong> {plane.callsign}</p>
+            <p><strong>Hoogte:</strong> {plane.altitude} m</p>
+            <p><strong>Afstand:</strong> {plane.distanceKm} km</p>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+export default App;
+"""
+}
