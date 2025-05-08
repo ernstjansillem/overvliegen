@@ -1,0 +1,6 @@
+cd /pad/naar/vliegtuigradar
+git init
+git remote add origin https://github.com/jouwgebruikersnaam/vliegtuigradar.git
+git add .
+git commit -m "Initieel project"
+git push -u origin master
