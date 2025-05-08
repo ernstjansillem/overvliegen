@@ -1,4 +1,4 @@
-cd /pad/naar/vliegtuigradar
+cd C:\Users\ernst\Downloads\vliegtuigradar
 git init
 git remote add origin https://github.com/jouwgebruikersnaam/vliegtuigradar.git
 git add .
